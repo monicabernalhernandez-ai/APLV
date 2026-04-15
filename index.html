@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Verificador APLV</title>
+<meta name="theme-color" content="#fffbeb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="APLV">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #f9f9f7; color: #1a1a1a; }
@@ -23,10 +30,11 @@
   .upload-label { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 8px; border: 1px solid #ddd; background: #fff; color: #1a1a1a; font-size: 14px; cursor: pointer; font-family: inherit; }
   .upload-label:hover { background: #f5f5f3; }
   .camera-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-  .preview-wrap { position: relative; margin-bottom: 12px; }
-  .preview-img { width: 100%; max-height: 200px; object-fit: cover; border-radius: 8px; border: 1px solid #eee; display: block; }
-  .preview-remove { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.55); color: #fff; border: none; border-radius: 50%; width: 28px; height: 28px; font-size: 14px; cursor: pointer; }
-  .ocr-status { font-size: 13px; color: #666; display: flex; align-items: center; gap: 8px; padding: 8px 0 4px; }
+  .preview-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .preview-wrap { position: relative; width: calc(50% - 4px); }
+  .preview-img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #eee; display: block; }
+  .preview-remove { position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.55); color: #fff; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; cursor: pointer; }
+  .ocr-status { font-size: 13px; color: #666; display: flex; align-items: center; gap: 8px; padding: 4px 0 8px; }
   .result-card { border-radius: 12px; border: 1px solid #e5e5e5; overflow: hidden; margin-top: 1.25rem; }
   .result-header { padding: 14px 18px; display: flex; align-items: center; gap: 10px; }
   .result-header.safe { background: #eaf3de; border-bottom: 1px solid #c0dd97; }
@@ -96,9 +104,9 @@
     <label class="upload-label" for="cameraInput">📷 Tomar foto</label>
     <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" onchange="handleImage(this)">
     <label class="upload-label" for="galleryInput">🖼 Subir imagen</label>
-    <input type="file" id="galleryInput" accept="image/*" style="display:none" onchange="handleImage(this)">
+    <input type="file" id="galleryInput" accept="image/*" multiple style="display:none" onchange="handleImage(this)">
   </div>
-  <div id="previewArea"></div>
+  <div id="previewArea"><div id="previewGrid" class="preview-grid"></div></div>
   <textarea id="ingredients" placeholder="O pega aquí la lista de ingredientes manualmente..."></textarea>
   <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
     <button class="btn btn-primary" id="analyzeBtn" onclick="analyze()">Analizar ↗</button>
@@ -151,8 +159,7 @@ const examples = [
   { name: "Bebida de avena", ingredients: "Agua, avena 10%, aceite de girasol, sal, vitaminas (D2, B12, riboflavina). Sin lactosa. Elaborado en instalaciones que también procesan leche." },
   { name: "Mortadela", ingredients: "Carne de cerdo, agua, fécula de papa, proteína de leche, sal, especias, dextrosa, antioxidante (ascorbato de sodio), conservante (nitrito de sodio)." }
 ];
-let currentImageBase64 = null;
-let currentImageType = 'image/jpeg';
+let images = []; // [{base64, type}]
 let allHistory = [];
 let currentFilter = 'all';
 
@@ -166,65 +173,73 @@ function switchTab(tab) {
 function loadExample(i) {
   document.getElementById('productName').value = examples[i].name;
   document.getElementById('ingredients').value = examples[i].ingredients;
-  currentImageBase64 = null;
-  document.getElementById('previewArea').innerHTML = '';
+  images = [];
+  renderPreviews();
 }
 
 function clearAll() {
   document.getElementById('productName').value = '';
   document.getElementById('ingredients').value = '';
   document.getElementById('result').innerHTML = '';
-  document.getElementById('previewArea').innerHTML = '';
-  currentImageBase64 = null;
+  images = [];
+  renderPreviews();
   document.getElementById('cameraInput').value = '';
   document.getElementById('galleryInput').value = '';
 }
 
-function removeImage() {
-  currentImageBase64 = null;
-  document.getElementById('previewArea').innerHTML = '';
-  document.getElementById('cameraInput').value = '';
-  document.getElementById('galleryInput').value = '';
+function removeImage(idx) {
+  images.splice(idx, 1);
+  renderPreviews();
+}
+
+function renderPreviews() {
+  const grid = document.getElementById('previewGrid');
+  if (images.length === 0) { grid.innerHTML = ''; return; }
+  grid.innerHTML = images.map((img, i) => `
+    <div class="preview-wrap">
+      <img src="data:${img.type};base64,${img.base64}" class="preview-img" alt="Foto ${i+1}">
+      <button class="preview-remove" onclick="removeImage(${i})">✕</button>
+    </div>`).join('');
 }
 
 function handleImage(input) {
-  const file = input.files[0];
-  if (!file) return;
-  currentImageType = file.type || 'image/jpeg';
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
-    currentImageBase64 = dataUrl.split(',')[1];
-    document.getElementById('previewArea').innerHTML = `
-      <div class="preview-wrap">
-        <img src="${dataUrl}" class="preview-img" alt="Imagen del producto">
-        <button class="preview-remove" onclick="removeImage()">✕</button>
-      </div>
-      <div class="ocr-status" id="ocrStatus"><span class="spinner"></span> Imagen cargada</div>`;
-    setTimeout(() => { const s = document.getElementById('ocrStatus'); if (s) s.innerHTML = '✓ Imagen lista'; }, 1500);
-  };
-  reader.readAsDataURL(file);
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      images.push({ base64: dataUrl.split(',')[1], type: file.type || 'image/jpeg' });
+      loaded++;
+      if (loaded === files.length) renderPreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
 }
 
 async function analyze() {
   const ingredientsText = document.getElementById('ingredients').value.trim();
   const productName = document.getElementById('productName').value.trim();
-  if (!ingredientsText && !currentImageBase64) { document.getElementById('ingredients').focus(); return; }
+  if (!ingredientsText && images.length === 0) { document.getElementById('ingredients').focus(); return; }
 
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Analizando...';
-  document.getElementById('result').innerHTML = `<div class="result-card"><div class="result-body" style="padding:20px 18px;display:flex;align-items:center;gap:10px;color:#666;font-size:14px;"><span class="spinner"></span> ${currentImageBase64 ? 'Leyendo imagen...' : 'Revisando ingredientes...'}</div></div>`;
+  document.getElementById('result').innerHTML = `<div class="result-card"><div class="result-body" style="padding:20px 18px;display:flex;align-items:center;gap:10px;color:#666;font-size:14px;"><span class="spinner"></span> ${images.length > 0 ? 'Leyendo ' + (images.length > 1 ? images.length + ' fotos...' : 'imagen...') : 'Revisando ingredientes...'}</div></div>`;
 
   const productContext = productName ? `Producto: "${productName}"\n` : '';
   const jsonSchema = `{"extracted_text":"texto extraído o vacío","verdict":"PELIGROSO|PRECAUCIÓN|SEGURO","summary":"frase corta","direct_ingredients":[],"hidden_ingredients":[],"traces":"descripción o Ninguna traza mencionada","explanation":"3-5 oraciones para la mamá en español tono cálido","recommendation":"una oración práctica"}`;
   const criteria = `PELIGROSO: leche, mantequilla, crema, queso, yogur, suero, caseína, caseinato, lactoalbúmina, lactoglobulina, proteína de leche, sólidos de leche, lactosuero, ghee, nata, requesón. PRECAUCIÓN: trazas de leche, instalaciones con lácteos, ambiguos. SEGURO: sin lácteos ni trazas de leche.`;
 
   let messages;
-  if (currentImageBase64) {
+  if (images.length > 0) {
+    const imageBlocks = images.map(img => ({ type: "image", source: { type: "base64", media_type: img.type, data: img.base64 } }));
+    const textNote = images.length > 1 ? `Se envían ${images.length} fotos del mismo producto — combina el texto de todas para obtener la lista completa de ingredientes.` : '';
     messages = [{ role: "user", content: [
-      { type: "image", source: { type: "base64", media_type: currentImageType, data: currentImageBase64 } },
-      { type: "text", text: `Eres experto en APLV. Madre lactante en dieta de eliminación estricta.\n${productContext}\nExtrae ingredientes de la imagen y analiza lácteos directos, ocultos y trazas.\nResponde SOLO JSON sin backticks: ${jsonSchema}\n${criteria}` }
+      ...imageBlocks,
+      { type: "text", text: `Eres experto en APLV. Madre lactante en dieta de eliminación estricta.\n${productContext}${textNote}\nExtrae los ingredientes de las imágenes y analiza lácteos directos, ocultos y trazas.\nResponde SOLO JSON sin backticks: ${jsonSchema}\n${criteria}` }
     ]}];
   } else {
     messages = [{ role: "user", content: `Eres experto en APLV. Madre lactante en dieta de eliminación estricta.\n${productContext}Ingredientes: ${ingredientsText}\nResponde SOLO JSON sin backticks: ${jsonSchema}\n${criteria}` }];
