@@ -130,6 +130,10 @@
     <div class="stat-pill w"><div class="stat-num" id="countWarn">0</div><div class="stat-label">Precaución</div></div>
     <div class="stat-pill d"><div class="stat-num" id="countDanger">0</div><div class="stat-label">Peligrosos</div></div>
   </div>
+  <div id="historySearch" style="display:none;position:relative;margin-bottom:12px;">
+    <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#aaa;font-size:15px;">🔍</span>
+    <input type="text" id="searchInput" placeholder="Buscar producto..." oninput="renderHistory()" style="padding-left:36px;margin-bottom:0;">
+  </div>
   <div class="history-filters" id="historyFilters" style="display:none">
     <button class="filter-btn active" onclick="filterHistory('all',this)">Todos</button>
     <button class="filter-btn" onclick="filterHistory('SEGURO',this)">Seguros</button>
@@ -323,23 +327,31 @@ async function loadHistory() {
 }
 
 function renderHistory() {
-  const filtered = currentFilter === 'all' ? allHistory : allHistory.filter(h => h.verdict === currentFilter);
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+  const filtered = allHistory
+    .filter(h => currentFilter === 'all' || h.verdict === currentFilter)
+    .filter(h => !search || h.productName.toLowerCase().includes(search) || (h.ingredients || '').toLowerCase().includes(search));
+
   const stats = document.getElementById('historyStats');
   const filters = document.getElementById('historyFilters');
+  const searchBox = document.getElementById('historySearch');
   const list = document.getElementById('historyList');
 
   if (allHistory.length === 0) {
-    stats.style.display = 'none'; filters.style.display = 'none';
+    stats.style.display = 'none'; filters.style.display = 'none'; searchBox.style.display = 'none';
     list.innerHTML = `<div class="history-empty">Aún no hay productos analizados.<br>Analiza tu primer producto para verlo aquí.</div>`;
     return;
   }
 
-  stats.style.display = 'flex'; filters.style.display = 'flex';
+  stats.style.display = 'flex'; filters.style.display = 'flex'; searchBox.style.display = 'block';
   document.getElementById('countSafe').textContent = allHistory.filter(h => h.verdict === 'SEGURO').length;
   document.getElementById('countWarn').textContent = allHistory.filter(h => h.verdict === 'PRECAUCIÓN').length;
   document.getElementById('countDanger').textContent = allHistory.filter(h => h.verdict === 'PELIGROSO').length;
 
-  if (filtered.length === 0) { list.innerHTML = `<div class="history-empty">No hay productos en esta categoría.</div>`; return; }
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="history-empty">${search ? 'Sin resultados para "' + search + '"' : 'No hay productos en esta categoría.'}</div>`;
+    return;
+  }
 
   const clsMap = { 'SEGURO': 'safe', 'PRECAUCIÓN': 'warning', 'PELIGROSO': 'danger' };
   list.innerHTML = filtered.map(item => {
