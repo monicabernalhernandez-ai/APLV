@@ -173,7 +173,7 @@ let images = [];
 let allHistory = [];
 let currentFilter = 'all';
 
-function initApp() {
+function initApp() {} // Firebase ready — funciones ya están en scope global
 
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', ['analyzer','history'][i] === tab));
@@ -534,7 +534,6 @@ async function deleteItem(e, id) {
     renderHistory();
   } catch (err) { alert('Error al eliminar.'); }
 }
-} // end initApp
 </script>
 </body>
 </html>
