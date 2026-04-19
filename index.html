@@ -152,15 +152,16 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
-firebase.initializeApp({
-  apiKey: "AIzaSyABzowTiaeOYcod6kk6jFotHwSaTl7DpT4",
-  authDomain: "aplv-2cc1e.firebaseapp.com",
-  projectId: "aplv-2cc1e",
-  storageBucket: "aplv-2cc1e.firebasestorage.app",
-  messagingSenderId: "1034305039453",
-  appId: "1:1034305039453:web:ccb90b41b00fde812171b4"
-});
-const db = firebase.firestore();
+let db;
+
+async function initFirebase() {
+  const res = await fetch("/.netlify/functions/config");
+  const cfg = await res.json();
+  firebase.initializeApp(cfg);
+  db = firebase.firestore();
+  initApp();
+}
+initFirebase();
 
 const examples = [
   { name: "Galletas de chocolate", ingredients: "Harina de trigo, azúcar, grasa vegetal, cacao en polvo 5%, almidón de maíz, leudante (bicarbonato de sodio), sal, vainillina. Puede contener trazas de leche, huevo y frutos secos." },
@@ -168,9 +169,11 @@ const examples = [
   { name: "Bebida de avena", ingredients: "Agua, avena 10%, aceite de girasol, sal, vitaminas (D2, B12, riboflavina). Sin lactosa. Elaborado en instalaciones que también procesan leche." },
   { name: "Mortadela", ingredients: "Carne de cerdo, agua, fécula de papa, proteína de leche, sal, especias, dextrosa, antioxidante (ascorbato de sodio), conservante (nitrito de sodio)." }
 ];
-let images = []; // [{base64, type}]
+let images = [];
 let allHistory = [];
 let currentFilter = 'all';
+
+function initApp() {
 
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', ['analyzer','history'][i] === tab));
@@ -531,6 +534,7 @@ async function deleteItem(e, id) {
     renderHistory();
   } catch (err) { alert('Error al eliminar.'); }
 }
+} // end initApp
 </script>
 </body>
 </html>
