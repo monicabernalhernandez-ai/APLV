@@ -235,7 +235,10 @@ async function analyze() {
 
   const productContext = productName ? `Producto: "${productName}"\n` : '';
   const jsonSchema = `{"extracted_text":"texto extraído o vacío","verdict":"PELIGROSO|PRECAUCIÓN|SEGURO","summary":"frase corta","direct_ingredients":[],"hidden_ingredients":[],"traces":"descripción o Ninguna traza mencionada","explanation":"3-5 oraciones para la mamá en español tono cálido","recommendation":"una oración práctica"}`;
-  const criteria = `PELIGROSO: leche, mantequilla, crema, queso, yogur, suero, caseína, caseinato, lactoalbúmina, lactoglobulina, proteína de leche, sólidos de leche, lactosuero, ghee, nata, requesón. PRECAUCIÓN: trazas de leche, instalaciones con lácteos, ambiguos. SEGURO: sin lácteos ni trazas de leche.`;
+  const criteria = `Clasifica así:
+PELIGROSO (contiene lácteos): leche, mantequilla, crema, queso, yogur, nata, requesón, ghee, lactosa, lactoferrina, lactulosa, caseína, caseinato (de sodio, calcio, potasio), alfa lactoalbúmina, beta lactoalbúmina, lactoalbúmina, lactoglobulina, albumina de suero bovino, proteína de leche, sólidos de leche, suero, suero en polvo, suero deslactosado, suero desmineralizado, concentrado de proteínas de suero, proteínas hidrolizadas de suero, lactosuero, mayonesa comercial, esencia de crema, esencia de crema bávara. Códigos E/H de origen lácteo: E472 (ésteres lácticos), E481/E482 (lactilatos de sodio y calcio), E966 (lactitol), E325/E326/E327 (lactatos), H4511/H4512 (caseinatos).
+PRECAUCIÓN: trazas de leche, fabricado en instalaciones con lácteos, "proteína animal" sin especificar fuente, caldo concentrado de carne o costilla (puede contener lácteos ocultos), E270 (ácido láctico — origen ambiguo), cualquier ingrediente ambiguo que podría ser derivado lácteo.
+SEGURO: sin ninguno de los anteriores ni trazas de leche.`;
 
   let messages;
   if (images.length > 0) {
