@@ -78,6 +78,11 @@
   .history-detail.open { display: block; }
   .delete-btn { font-size: 13px; color: #bbb; background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-family: inherit; flex-shrink: 0; }
   .delete-btn:hover { color: #e24b4a; background: #fcebeb; }
+  .reanalyze-btn { font-size: 12px; color: #555; background: #f5f5f3; border: 1px solid #e5e5e5; border-radius: 6px; padding: 5px 12px; cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 5px; }
+  .reanalyze-btn:hover { background: #ebebea; border-color: #ccc; }
+  .reanalyze-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .edit-btn { font-size: 13px; color: #bbb; background: none; border: none; cursor: pointer; padding: 2px 5px; border-radius: 4px; font-family: inherit; flex-shrink: 0; }
+  .edit-btn:hover { color: #555; background: #f0f0ee; }
   .history-stats { display: flex; gap: 10px; margin-bottom: 1rem; }
   .stat-pill { flex: 1; text-align: center; padding: 8px; border-radius: 8px; border: 1px solid #eee; background: #fff; }
   .stat-num { font-size: 20px; font-weight: 500; }
@@ -364,20 +369,22 @@ function renderHistory() {
     const hiddenTags = (item.hidden_ingredients || []).map(i => `<span class="tag tag-danger">${i}</span>`).join('');
     const traceSection = item.traces && item.traces !== 'Ninguna traza mencionada' ? `<div style="margin-top:8px;"><span class="tag tag-warning">${item.traces}</span></div>` : '';
     const ing = item.ingredients ? `<p style="font-size:12px;color:#aaa;margin-top:8px;line-height:1.5;">${item.ingredients.substring(0, 220)}${item.ingredients.length > 220 ? '...' : ''}</p>` : '';
+    const reanalyzeBtn = item.ingredients ? `<button class="reanalyze-btn" onclick="reanalyzeItem(event,'${item.id}')">↻ Re-analizar</button>` : '';
     return `
-    <div class="history-item">
+    <div class="history-item" id="hitem-${item.id}">
       <div class="history-item-header" onclick="toggleDetail('${item.id}')">
         <div class="verdict-dot ${cls}"></div>
-        <span class="history-name">${item.productName}</span>
+        <span class="history-name" id="hname-${item.id}">${item.productName}</span>
+        <button class="edit-btn" onclick="startRename(event,'${item.id}')">✎</button>
         <span class="history-date">${date}</span>
         <button class="delete-btn" onclick="deleteItem(event,'${item.id}')">✕</button>
       </div>
-      <div class="history-summary">${item.summary || ''}</div>
+      <div class="history-summary" id="hsummary-${item.id}">${item.summary || ''}</div>
       <div class="history-detail" id="hdetail-${item.id}">
-        ${directTags || hiddenTags ? `<div style="margin-bottom:6px;">${directTags}${hiddenTags}</div>` : ''}
-        ${traceSection}
-        <p class="analysis-text" style="margin-top:8px;font-size:13px;">${item.explanation || ''}</p>
+        <div id="htags-${item.id}">${directTags || hiddenTags ? `<div style="margin-bottom:6px;">${directTags}${hiddenTags}</div>` : ''}${traceSection}</div>
+        <p class="analysis-text" style="margin-top:8px;font-size:13px;" id="hexpl-${item.id}">${item.explanation || ''}</p>
         ${ing}
+        <div style="margin-top:12px;">${reanalyzeBtn}</div>
       </div>
     </div>`;
   }).join('');
@@ -388,11 +395,132 @@ function toggleDetail(id) {
   if (d) d.classList.toggle('open');
 }
 
+function startRename(e, id) {
+  e.stopPropagation();
+  const nameEl = document.getElementById('hname-' + id);
+  if (!nameEl) return;
+  const current = nameEl.textContent;
+  nameEl.innerHTML = `<input type="text" class="rename-input" value="${current}" onclick="event.stopPropagation()" onkeydown="handleRenameKey(event,'${id}')" style="font-size:14px;font-weight:500;border:1px solid #999;border-radius:5px;padding:2px 6px;width:140px;font-family:inherit;">
+    <button class="reanalyze-btn" style="margin-left:4px;padding:3px 8px;" onclick="saveRename(event,'${id}')">✓</button>`;
+  const input = nameEl.querySelector('input');
+  if (input) { input.focus(); input.select(); }
+}
+
+function handleRenameKey(e, id) {
+  if (e.key === 'Enter') saveRename(e, id);
+  if (e.key === 'Escape') {
+    const item = allHistory.find(h => h.id === id);
+    if (item) document.getElementById('hname-' + id).innerHTML = item.productName;
+  }
+}
+
+async function saveRename(e, id) {
+  e.stopPropagation();
+  const nameEl = document.getElementById('hname-' + id);
+  const input = nameEl ? nameEl.querySelector('input') : null;
+  if (!input) return;
+  const newName = input.value.trim() || 'Sin nombre';
+  try {
+    await db.collection("scans").doc(id).update({ productName: newName });
+    const idx = allHistory.findIndex(h => h.id === id);
+    if (idx !== -1) allHistory[idx].productName = newName;
+    nameEl.textContent = newName;
+  } catch(err) {
+    alert('Error al guardar el nombre.');
+    const item = allHistory.find(h => h.id === id);
+    if (item) nameEl.textContent = item.productName;
+  }
+}
+
 function filterHistory(filter, btn) {
   currentFilter = filter;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderHistory();
+}
+
+async function reanalyzeItem(e, id) {
+  e.stopPropagation();
+  const item = allHistory.find(h => h.id === id);
+  if (!item || !item.ingredients) return;
+
+  const btn = e.target;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Analizando...';
+  btn.style.opacity = '0.6';
+
+  // Open detail if not open
+  const detail = document.getElementById('hdetail-' + id);
+  if (detail && !detail.classList.contains('open')) detail.classList.add('open');
+
+  const jsonSchema = `{"extracted_text":"","verdict":"PELIGROSO|PRECAUCIÓN|SEGURO","summary":"frase corta","direct_ingredients":[],"hidden_ingredients":[],"traces":"descripción o Ninguna traza mencionada","explanation":"3-5 oraciones para la mamá en español tono cálido","recommendation":"una oración práctica"}`;
+  const criteria = `Clasifica así:
+PELIGROSO (contiene lácteos): leche, mantequilla, crema, queso, yogur, nata, requesón, ghee, lactosa, lactoferrina, lactulosa, caseína, caseinato (de sodio, calcio, potasio), alfa lactoalbúmina, beta lactoalbúmina, lactoalbúmina, lactoglobulina, albumina de suero bovino, proteína de leche, sólidos de leche, suero, suero en polvo, suero deslactosado, suero desmineralizado, concentrado de proteínas de suero, proteínas hidrolizadas de suero, lactosuero, mayonesa comercial, esencia de crema, esencia de crema bávara. Códigos E/H de origen lácteo: E472 (ésteres lácticos), E481/E482 (lactilatos de sodio y calcio), E966 (lactitol), E325/E326/E327 (lactatos), H4511/H4512 (caseinatos).
+PRECAUCIÓN: trazas de leche, fabricado en instalaciones con lácteos, "proteína animal" sin especificar fuente, caldo concentrado de carne o costilla (puede contener lácteos ocultos), E270 (ácido láctico — origen ambiguo), cualquier ingrediente ambiguo que podría ser derivado lácteo.
+SEGURO: sin ninguno de los anteriores ni trazas de leche.`;
+
+  try {
+    const res = await fetch("/.netlify/functions/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: `Eres experto en APLV. Madre lactante en dieta de eliminación estricta.\nProducto: "${item.productName}"\nIngredientes: ${item.ingredients}\nResponde SOLO JSON sin backticks: ${jsonSchema}\n${criteria}` }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content.map(i => i.text || "").join("");
+    const result = JSON.parse(text.replace(/```json|```/g, "").trim());
+
+    // Update Firebase
+    await db.collection("scans").doc(id).update({
+      verdict: result.verdict,
+      summary: result.summary || "",
+      direct_ingredients: result.direct_ingredients || [],
+      hidden_ingredients: result.hidden_ingredients || [],
+      traces: result.traces || "",
+      explanation: result.explanation || "",
+      recommendation: result.recommendation || "",
+      timestamp: new Date().toISOString()
+    });
+
+    // Update local allHistory
+    const idx = allHistory.findIndex(h => h.id === id);
+    if (idx !== -1) allHistory[idx] = { ...allHistory[idx], ...result, timestamp: new Date().toISOString() };
+
+    // Update UI inline
+    const clsMap = { 'SEGURO': 'safe', 'PRECAUCIÓN': 'warning', 'PELIGROSO': 'danger' };
+    const newCls = clsMap[result.verdict] || 'warning';
+    const dot = document.querySelector(`#hitem-${id} .verdict-dot`);
+    if (dot) { dot.className = 'verdict-dot ' + newCls; }
+    const summary = document.getElementById('hsummary-' + id);
+    if (summary) summary.textContent = result.summary || '';
+    const expl = document.getElementById('hexpl-' + id);
+    if (expl) expl.textContent = result.explanation || '';
+    const tags = document.getElementById('htags-' + id);
+    if (tags) {
+      const dTags = (result.direct_ingredients || []).map(i => `<span class="tag tag-danger">${i}</span>`).join('');
+      const hTags = (result.hidden_ingredients || []).map(i => `<span class="tag tag-danger">${i}</span>`).join('');
+      const tSection = result.traces && result.traces !== 'Ninguna traza mencionada' ? `<div style="margin-top:8px;"><span class="tag tag-warning">${result.traces}</span></div>` : '';
+      tags.innerHTML = (dTags || hTags ? `<div style="margin-bottom:6px;">${dTags}${hTags}</div>` : '') + tSection;
+    }
+
+    btn.innerHTML = '✓ Actualizado';
+    btn.style.color = '#27500a';
+    setTimeout(() => { btn.innerHTML = '↻ Re-analizar'; btn.disabled = false; btn.style.opacity = '1'; btn.style.color = ''; }, 2500);
+
+    // Refresh stats
+    document.getElementById('countSafe').textContent = allHistory.filter(h => h.verdict === 'SEGURO').length;
+    document.getElementById('countWarn').textContent = allHistory.filter(h => h.verdict === 'PRECAUCIÓN').length;
+    document.getElementById('countDanger').textContent = allHistory.filter(h => h.verdict === 'PELIGROSO').length;
+
+  } catch(err) {
+    btn.innerHTML = '↻ Re-analizar';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    alert('Error al re-analizar. Intenta de nuevo.');
+  }
 }
 
 async function deleteItem(e, id) {
